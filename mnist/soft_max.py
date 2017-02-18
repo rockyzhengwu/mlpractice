@@ -3,6 +3,12 @@
 
 __author__ = "wu.zheng"
 
+"""
+softmax 手写数字识别
+loss function ： cross entry
+optimization: GD, SGD
+"""
+
 import numpy as np
 from load_data import load_data
 
@@ -136,3 +142,7 @@ if __name__ == '__main__':
     softclass = SoftmaxClassfier()
     softclass.trainGD(train_x, train_y, test_x, test_y, 500)
     softclass.trainSGD(train_x, train_y, test_x, test_y, 200)
+    # SGD 的收敛速度要快很多
+    # todo 实现BFGS, L-BFGS 优化方法, 换误差函数
+
+
