@@ -27,8 +27,6 @@ class MFNN(object):
         self.w = [np.random.randn(r, l) for r, l in zip(sizes[1:], sizes[:-1])]
         self.b = [np.random.randn(r, 1) for r in sizes[1:]]
         self.num_layers = len(sizes)
-        for w in self.w:
-            print w.shape
 
     def backprop(self, x, y):
         Z = []
@@ -46,8 +44,8 @@ class MFNN(object):
         # backprob
 
         # 计算最后一层对在d的导数, 放到delta_list
-        delta_list = [0 for i in range(self.num_layers - 1)]
-        delta = (y - A[-1]) * sigmoid_derivative(z)
+        delta_list = [0 * i for i in range(self.num_layers - 1)]
+        delta = (A[-1] - y ) * sigmoid_derivative(z)
         delta_list[-1] = delta
 
         # 计算最后一层对w,b 的偏导数
@@ -69,12 +67,9 @@ class MFNN(object):
             n_dw[-layer] = dw
         return n_db, n_dw
 
-    def trainGD(self, X, Y, test_x, test_y, epochs=100, rate=0.01):
-        # forward
+    def train_gd(self, X, Y, test_x, test_y, epochs=100, rate=0.01):
 
-        # backpropagation
-        # 更新参数
-        m = X[0].shape[0]
+        m = len(X)
         for epoch in range(epochs):
             dw = [np.zeros(t.shape) for t in self.w]
             db = [np.zeros(t.shape) for t in self.b]
@@ -83,10 +78,32 @@ class MFNN(object):
                 n_db, n_dw = self.backprop(x, y)
                 dw = [a + b for a, b in zip(dw, n_dw)]
                 db = [a + b for a, b in zip(db, n_db)]
-            self.w = [w - ((rate / m) * d) for w, d in zip(self.w, dw)]
-            self.b = [b - ((rate / m) * d) for b, d in zip(self.b, db)]
+            self.w = [w - (rate / m) * d for w, d in zip(self.w, dw)]
+            self.b = [b - (rate / m) * d for b, d in zip(self.b, db)]
             counter = self.test(test_x, test_y)
             print "epoch %d %d/%d" % (epoch, counter, len(test_y))
+
+    def update_batch(self, X, Y, rate):
+        batch_dw = [np.zeros(t.shape) for t in self.w]
+        batch_db = [np.zeros(t.shape) for t in self.b]
+        for x, y in zip(X, Y):
+            n_db, n_dw = self.backprop(x, y)
+            batch_dw = [a + b for a, b in zip(batch_dw, n_dw)]
+            batch_db = [a + b for a, b in zip(batch_db, n_db)]
+
+        m = len(X)
+        self.w = [w - (rate / m) * d for w, d in zip(self.w, batch_dw)]
+        self.b = [b - (rate / m) * d for b, d in zip(self.b, batch_db)]
+
+    def train_batch(self, X, Y, test_x, test_y, epochs=100, mini_batch=10, rate=0.01):
+        m = len(X)
+        batch_x = [X[k:k + mini_batch] for k in xrange(0, m, mini_batch)]
+        batch_y = [Y[k:k + mini_batch] for k in xrange(0, m, mini_batch)]
+        for epoch in xrange(epochs):
+            for b_x, b_y in zip(batch_x, batch_y):
+                self.update_batch(b_x, b_y, rate)
+            counter = self.test(test_x, test_y)
+            print "epoch: %d/%d" % (counter, len(test_x))
 
     def test(self, X, Y):
         counter = 0
@@ -108,11 +125,13 @@ class MFNN(object):
 
 if __name__ == '__main__':
     train_data, validation_data, test_data = load_data()
-    sizes = [784, 20, 10]
+    sizes = [784, 30, 10]
     nn = MFNN(sizes)
     train_x = [t[0] for t in train_data]
     train_y = [t[1] for t in train_data]
     test_x = [t[0] for t in test_data]
     test_y = [t[1] for t in test_data]
 
-    nn.trainGD(train_x, train_y, test_x, test_y)
+    nn.train_gd(train_x, train_y, test_x, test_y, rate=3.0)
+
+    # nn.train_batch(train_x, train_y, test_x, test_y, rate=3.0)
