@@ -11,7 +11,6 @@
 
 typedef float real;
 
-
 struct vocab_word{
     long long cn;
     int *point;
@@ -87,6 +86,7 @@ int GetWordHash(char *word){
     hash = hash % vocab_hash_size;
     return hash;
 }
+
 // 添加word 到vocab 中
 int AddWordToVocab(char *word){
     unsigned int hash;
@@ -100,6 +100,7 @@ int AddWordToVocab(char *word){
         vocab_max_size += 1000;
         vocab = (struct vocab_word *)realloc(vocab, vocab_max_size * sizeof(struct vocab_word));
     }
+
     hash = GetWordHash(word);
     // 如果hash 值重复
     while(vocab_hash[hash] !=-1) hash = (hash+1) % vocab_hash_size;
@@ -119,7 +120,7 @@ void ReadWord(char *word, FILE *fin){
                 break;
             }
             if(ch=='\n'){
-                strcpy(word, char( *)"</s>");
+                strcpy(word, (char *)"</s>");
                 return ;
             }else continue;
         }
@@ -130,6 +131,65 @@ void ReadWord(char *word, FILE *fin){
     word[a] = 0;
 }
 
+int VocabCompare(const void *a, const void *b){
+    return ((struct vocab_word *)b)->cn -((struct vocab_word *)a)->cn;
+}
+
+
+int SearchVocab(char *word){
+    unsigned int hash = GetWordHash(word);
+    while(1){
+        if (vocab_hash[hash]==-1) return -1;
+        if (!strcmp(word, vocab[vocab_hash[hash]].word)) return vocab_hash[hash];
+        hash = (hash+1)%vocab_hash_size;
+    }
+    return -1;
+}
+
+
+void ReduceVocab(){
+    int a,b = 0;
+    unsigned int hash;
+    for(a=0; a<vocab_size; a++) if (vocab[a].cn>min_reduce){
+        vocab[b].cn = vocab[a].cn;
+        vocab[b].word = vocab[a].word;
+        b++;
+    } else free(vocab[a].word);
+    vocab_size=b;
+    for(a = 0; a<vocab_hash_size; a++) vocab_hash[a] = -1;
+    for(a=0; a<vocab_size; a++){
+        hash = GetWordHash(vocab[a].word);
+        while(vocab_hash[hash]!=-1) hash = (hash+1)%vocab_hash_size;
+        vocab_hash[hash] = a;
+    }
+    fflush(stdout);
+    min_reduce++;
+}
+
+void SortVocab(){
+    int a, size;
+    unsigned int hash;
+    qsort(&vocab[1], vocab_size-1, sizeof(struct vocab_word), VocabCompare);
+    for(a=0; a<vocab_hash_size; a++) vocab_hash[a] = -1;
+    size = vocab_size;
+    train_words = 0;
+    for(a =0; a<size; a++){
+        if((vocab[a].cn<min_count)&&(a!=0)){
+            vocab_size--;
+            free(vocab[a].word);
+        }else{
+            hash = GetWordHash(vocab[a].word);
+            while (vocab_hash[hash]!=-1) hash =(hash+1)%vocab_hash_size;
+            vocab_hash[hash] = a;
+            train_words += vocab[a].cn;
+        }
+    }
+    vocab = (struct vocab_word *)realloc(vocab, (vocab_size+1)*sizeof(struct vocab_word));
+    for(a=0; a<vocab_size; a++){
+        vocab[a].code = (char *)calloc(MAX_CODE_LENGTH, sizeof(char));
+        vocab[a].point = (int *)calloc(MAX_CODE_LENGTH, sizeof(int));
+    }
+}
 
 void LearnVocabFromTrainFile(){
      char word[MAX_STRING];
@@ -148,9 +208,35 @@ void LearnVocabFromTrainFile(){
      AddWordToVocab((char *)"</s>");
      while(1){
          ReadWord(word, fin);
+         if (feof(fin))break;
+         train_words++;
+         if((debug_mode>1)&& train_words%100000==0){
+             printf("%lldk%c", train_words/1000, 13);
+             fflush(stdout);
+         }
+         i = SearchVocab(word);
+         if (i==-1){
+             a = AddWordToVocab(word);
+             vocab[a].cn = 1;
+         }else vocab[i].cn++;
+         if (vocab_size>vocab_hash_size*0.7) ReduceVocab();
      }
+     SortVocab();
+     if(debug_mode>0){
+         printf("Vocab size:%lld\n", vocab_size);
+         printf("words in train file:%lld\n", train_words);
+     }
+     file_size = ftell(fin);
+     fclose(fin);
 }
 
+
+void SaveVocab(){
+    long long i;
+    FILE *fo = fopen(save_vocab_file , "wb");
+    for (i=0; i<vocab_size; i++) fprintf(fo, "%s %lld\n", vocab[i].word, vocab[i].cn);
+    fclose(fo);
+}
 
 void TrainModel(){
     long a, b, c, d;
@@ -166,6 +252,7 @@ void TrainModel(){
         // 从训练语料中产生vocab
         LearnVocabFromTrainFile();
     }
+    if(save_vocab_file[0]!=0)SaveVocab();
 }
 
 int main(int argc, char **argv){
