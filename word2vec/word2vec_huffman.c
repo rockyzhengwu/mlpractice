@@ -56,8 +56,8 @@ real *syn1neg;
 real *expTable;
 
 
-int hs = 0;
-int negative = 5;
+int hs = 0; // 是否使用层次softmax
+int negative = 5; 
 const int table_size = 1e8;
 int *table;
 struct vocab_word *vocab; // 保存vocab
@@ -108,6 +108,7 @@ int AddWordToVocab(char *word){
     return vocab_size-1;
 }
 
+// 从文件中读取一个词,词使用\t或\s或\n 分隔
 void ReadWord(char *word, FILE *fin){
     int a=0;
     int ch ;
@@ -131,11 +132,12 @@ void ReadWord(char *word, FILE *fin){
     word[a] = 0;
 }
 
+// 比较两个vocabcompare
 int VocabCompare(const void *a, const void *b){
     return ((struct vocab_word *)b)->cn -((struct vocab_word *)a)->cn;
 }
 
-
+// 从vocab_hash 中get hash
 int SearchVocab(char *word){
     unsigned int hash = GetWordHash(word);
     while(1){
@@ -146,7 +148,7 @@ int SearchVocab(char *word){
     return -1;
 }
 
-
+// 清除vocab 中的低频词
 void ReduceVocab(){
     int a,b = 0;
     unsigned int hash;
@@ -232,7 +234,7 @@ void LearnVocabFromTrainFile(){
      fclose(fin);
 }
 
-
+// 保存vocab 到文件
 void SaveVocab(){
     long long i;
     FILE *fo = fopen(save_vocab_file , "wb");
@@ -240,10 +242,86 @@ void SaveVocab(){
     fclose(fo);
 }
 
+// 构建二叉树
 void CreateBinaryTree(){
+	long a, b, i,min1i, min2i, pos1, pos2, point[MAX_CODE_LENGTH];
+	char code[MAX_CODE_LENGTH];
+	// count 存储词频
+	long long *count = (long long *)calloc(vocab_size*2+1, sizeof(long long));
+	// 存储每个节点的编码
+	long long *binary =(long long *)calloc(vocab_size*2+1, sizeof(long long));
+	// 存储节点建的父子关系
+	long long *parent_node = (long long *)calloc(vocab_size*2+1, sizeof(long long));
 
+	for(a=0; a<vocab_size; a++) count[a] = vocab[a].cn;
+	for(a= vocab_size; a<vocab_size*2; a++) count[a] = 1e15;
+
+	pos1 = vocab_size-1;
+	pos2 = vocab_size;
+
+	for(a = 0; a<vocab_size-1; a++){
+		// 找到pos1和pos2中小的那个节点
+        if(pos1>=0){
+			if(count[pos1]<count[pos2]){
+				min1i = pos1;
+				pos1--;
+			}else{
+				min1i=pos2;
+				pos2++;
+			}
+		}else{
+			min1i=pos2;
+			pos2++;
+		}
+        // 找到pos1 和pos2 中小的那个
+		if(pos1>=0){
+			if(count[pos1]<count[pos2]){
+				min2i= pos1;
+				pos1--;
+			}else{
+				min2i = pos2;
+				pos2++;
+			}
+		}else{
+			min2i = pos2;
+			pos2++;
+		}
+
+		// 计算父节点的count ＝子节点count 之和
+		count[vocab_size+a] = count[min1i]+count[min2i];
+		// 指定节点间关系
+		parent_node[min1i] = vocab_size+a;
+		parent_node[min2i] = vocab_size+a;
+		// 小的那个节点编码为1
+		binary[min2i] = 1;
+	}
+
+	for(a = 0; a<vocab_size; i++){
+		b = a;
+		i =0;
+		// 获得节点a从叶子节点到根节点的编码
+		while(1){
+			code[i] = binary[b];
+			point[i] = b;
+			i ++;
+			b = parent_node[b];
+			if (b==vocab_size*2-2)break;
+		}
+		vocab[a].codelen = i;
+		vocab[a].point[0] = vocab_size-2;
+        //code 倒过来就是　huffman编码
+		for(b =0;b<i; b++){
+			vocab[a].code[i-b-1] = code[b];
+			vocab[a].point[i-b] = point[b]-vocab_size;
+		}
+
+	}
+	free(count);
+	free(binary);
+	free(parent_node);
 }
 
+// 初始化网路
 void InitNet(){
     long long a, b;
     unsigned long long next_random=1;
@@ -282,9 +360,14 @@ void TrainModel(){
         LearnVocabFromTrainFile();
     }
     if(save_vocab_file[0]!=0)SaveVocab();
-    if(output_file[0]==0)return;
+    if(output_file[0]==0) return;
     // 初始化网络
     InitNet();
+	int t;
+	for(t=0;t<vocab_size;t++){
+		printf("%d\n",vocab[t].codelen);
+	}
+	
 }
 
 
