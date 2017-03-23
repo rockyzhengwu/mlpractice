@@ -57,7 +57,7 @@ real *expTable;
 
 
 int hs = 0; // 是否使用层次softmax
-int negative = 5; 
+int negative = 5;
 const int table_size = 1e8;
 int *table;
 struct vocab_word *vocab; // 保存vocab
@@ -252,10 +252,8 @@ void CreateBinaryTree(){
 	long long *binary =(long long *)calloc(vocab_size*2+1, sizeof(long long));
 	// 存储节点建的父子关系
 	long long *parent_node = (long long *)calloc(vocab_size*2+1, sizeof(long long));
-
 	for(a=0; a<vocab_size; a++) count[a] = vocab[a].cn;
 	for(a= vocab_size; a<vocab_size*2; a++) count[a] = 1e15;
-
 	pos1 = vocab_size-1;
 	pos2 = vocab_size;
 
@@ -274,9 +272,9 @@ void CreateBinaryTree(){
 			pos2++;
 		}
         // 找到pos1 和pos2 中小的那个
-		if(pos1>=0){
+		if(pos1 >= 0){
 			if(count[pos1]<count[pos2]){
-				min2i= pos1;
+				min2i = pos1;
 				pos1--;
 			}else{
 				min2i = pos2;
@@ -296,7 +294,7 @@ void CreateBinaryTree(){
 		binary[min2i] = 1;
 	}
 
-	for(a = 0; a<vocab_size; i++){
+	for(a = 0; a<vocab_size; a++){
 		b = a;
 		i =0;
 		// 获得节点a从叶子节点到根节点的编码
@@ -314,7 +312,6 @@ void CreateBinaryTree(){
 			vocab[a].code[i-b-1] = code[b];
 			vocab[a].point[i-b] = point[b]-vocab_size;
 		}
-
 	}
 	free(count);
 	free(binary);
@@ -342,15 +339,70 @@ void InitNet(){
         }
     }
     CreateBinaryTree();
+}
+
+int ReadWordIndex(FILE *fin){
+    char word[MAX_STRING];
+    ReadWord(word, fin);
+    if (feof(fin)) return -1;
+    return SearchVocab(word);
+}
+
+void TrainModelThread(){
+    long long a,b,d, cw, word, last_word, sentence_length=0, sentence_position=0;
+    long long word_count=0, last_word_count=0, sen[MAX_SENTENCE_LENGTH+1];
+    long long l1, l2,c, target,label, local_iter=iter;
+    real f, g;
+    clock_t now;
+    real *neu1 = (real *)calloc(layer1_size, sizeof(real));
+    real *neu1e =(real *)calloc(layer1_size, sizeof(real));
+    FILE *fi = fopen(train_file, "rb");
+
+    while(1){
+        if(word_count-last_word_count>10000){
+            word_count_actual +=word_count-last_word_count;
+            last_word_count = word_count;
+            alpha = starting_alpha *(1-word_count_actual / (real)(iter*train_words +1));
+            if(alpha<starting_alpha*0.0001) alpha = starting_alpha*0.0001;
+        }
+        if (sentence_length==0){
+            while(1){
+                word = ReadWordIndex(fi);
+                if (feof(fi)) break;
+                if (word==-1) continue;
+                word_count++;
+                if(word==0)break;
+                /**
+                if(sample>0){
+                    real ran = (sqrt(vocab[word].cn/(sample*train_words))+1 )*(sample*train_words)/vocab[word].cn;
+                    real ran = (sqrt(vocab[word].cn / (sample * train_words)) + 1) * (sample * train_words) / vocab[word].cn;
+                    next_random = next_random * (unsigned long long)25214903917 + 11;
+                    if(ran<(next_random&0xFFFF)/(real)65536) continue;
+                }
+                **/
+                sen[sentence_length] = word;
+                sentence_length++;
+                if (sentence_length> MAX_SENTENCE_LENGTH) break;
+            }
+            sentence_position=0;
+        }
+        word = sen[sentence_position];
+        if(word==-1) continue;
+        for(c =0; c<layer1_size; c++) neu1[c] =0;
+        for(c=0; c<layer1_size;c++) neu1e[c] =0;
+        next_random = next_random *(unsigned long long)25214903917 +11;
+        b = next_random % window;
+
+    }
 
 }
+
 
 void TrainModel(){
     long a, b, c, d;
     FILE *fo;
     printf("String training using file %s\n", train_file);
     starting_alpha = alpha;
-
     if(read_vocab_file[0]!=0){
         // 直接读取计算好的vocab
         //ReadVocab();
@@ -359,15 +411,12 @@ void TrainModel(){
         // 从训练语料中产生vocab
         LearnVocabFromTrainFile();
     }
-    if(save_vocab_file[0]!=0)SaveVocab();
+
+    if(save_vocab_file[0]!=0) SaveVocab();
     if(output_file[0]==0) return;
     // 初始化网络
     InitNet();
-	int t;
-	for(t=0;t<vocab_size;t++){
-		printf("%d\n",vocab[t].codelen);
-	}
-	
+    TrainModelThread();
 }
 
 
