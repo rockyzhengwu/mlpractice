@@ -352,6 +352,7 @@ void TrainModelThread(){
     long long a,b,d, cw, word, last_word, sentence_length=0, sentence_position=0;
     long long word_count=0, last_word_count=0, sen[MAX_SENTENCE_LENGTH+1];
     long long l1, l2,c, target,label, local_iter=iter;
+    unsigned long long next_random = (long long )300;
     real f, g;
     clock_t now;
     real *neu1 = (real *)calloc(layer1_size, sizeof(real));
@@ -392,7 +393,7 @@ void TrainModelThread(){
         for(c=0; c<layer1_size;c++) neu1e[c] =0;
         next_random = next_random *(unsigned long long)25214903917 +11;
         b = next_random % window;
-
+        printf("%d\n",b);
     }
 
 }
